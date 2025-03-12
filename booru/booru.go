@@ -1,6 +1,7 @@
 package booru
 
 import (
+	"Unbewohnte/gobooru-downloader/util"
 	"net/http"
 	"net/url"
 
@@ -9,7 +10,7 @@ import (
 
 // Performs GET on given url, returns goquery.Document
 func getDocument(client *http.Client, url url.URL) (*goquery.Document, error) {
-	response, err := client.Get(url.String())
+	response, err := util.DoGETRetry(client, url.String(), 5)
 	if err != nil {
 		return nil, err
 	}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -135,7 +134,6 @@ func init() {
 				break
 			}
 
-			// Log the error
 			logger.Error("[Worker] Attempt %d on %s: %s", attempt, j.PostURL.String(), err)
 
 			// Exponential backoff
@@ -150,33 +148,23 @@ func init() {
 		}
 
 		// Save image
-		err = booru.SaveImage(
+		imageHash, err := booru.SaveImage(
 			httpClient,
 			postInfo.ImageURL,
-			filepath.Join(*outputDir, fmt.Sprintf("%s_image", postInfo.PostID)),
+			*outputDir,
 		)
 		if err != nil {
-			logger.Error("[Worker] Failed to save image %s: %s", postInfo.PostID, err)
+			logger.Error("[Worker] Failed to save image: %s", err)
 			return NewResult(false, nil)
 		}
 
-		// Save tags to file
-		tagsFile, err := os.Create(filepath.Join(*outputDir, fmt.Sprintf("%s_tags.json", postInfo.PostID)))
+		// Save metadata to file
+		err = booru.SaveMetadataJson(
+			booru.NewMetadata(*postInfo, j.PostURL.Hostname(), imageHash),
+			filepath.Join(*outputDir, "metadata.json"),
+		)
 		if err != nil {
-			logger.Error("[Worker] Failed to create tagslist file: %s", err)
-			return NewResult(false, nil)
-		}
-		defer tagsFile.Close()
-
-		tagsBytes, err := json.Marshal(&postInfo.Tags)
-		if err != nil {
-			logger.Error("[Worker] Failed to marshal taglist: %s", err)
-			return NewResult(false, nil)
-		}
-
-		_, err = tagsFile.Write(tagsBytes)
-		if err != nil {
-			logger.Error("[Worker] Failed to write tags to file: %s", err)
+			logger.Error("[Worker] Failed to save metadata for %s: %s", imageHash, err)
 			return NewResult(false, nil)
 		}
 
@@ -206,11 +194,11 @@ func main() {
 	// Launch worker pool
 	pool.Start(workerFunc)
 
-	// Print results once in a while
+	// Print results
 	go func() {
 		for result := range pool.GetResults() {
 			if result.Success {
-				logger.Info("[Result] Done with %s", result.Info.PostID)
+				logger.Info("[Result] Done with %s", result.Info.ImageURL)
 			} else {
 				logger.Warning("[Result] Fail")
 			}

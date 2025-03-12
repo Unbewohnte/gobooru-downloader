@@ -1,6 +1,9 @@
 package booru
 
 import (
+	"Unbewohnte/gobooru-downloader/util"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -8,8 +11,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strings"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -26,6 +27,11 @@ func NewTag(value string, isArtist bool, isCharacter bool) Tag {
 		IsCharacter: isCharacter,
 		Value:       value,
 	}
+}
+
+type PostInfo struct {
+	Tags     []Tag  `json:"tags"`
+	ImageURL string `json:"image_url"`
 }
 
 // Retrieves tags from booru post page document
@@ -65,38 +71,6 @@ func GetTags(client *http.Client, postURL url.URL) ([]Tag, error) {
 	return getTagsFromDoc(doc, postURL.Hostname())
 }
 
-func postIdFromText(text string) string {
-	re := regexp.MustCompile(`ID: (\d+)`)
-	matches := re.FindStringSubmatch(text)
-	if len(matches) > 1 {
-		return matches[1]
-	}
-
-	return ""
-}
-
-// Returns post ID from post document. Returns error if not post ID was found
-func GetPostIdFromDoc(postDoc *goquery.Document, hostname string) (string, error) {
-	switch hostname {
-	case "danbooru.donmai.us":
-		postInfo := postDoc.Find("#post-information li:contains('ID:')").Text()
-		postID := postIdFromText(postInfo)
-		if postID != "" {
-			return postID, nil
-		} else {
-			return "", errors.New("no post ID found")
-		}
-	default:
-		return "", fmt.Errorf("%s is not supported", hostname)
-	}
-}
-
-type PostInfo struct {
-	PostID   string
-	Tags     []Tag
-	ImageURL string
-}
-
 // Retrieves image URL from post document
 func getImageURLFromDoc(postDoc *goquery.Document, hostname string) (string, error) {
 	switch hostname {
@@ -120,32 +94,54 @@ func getImageURLFromDoc(postDoc *goquery.Document, hostname string) (string, err
 		}
 
 		return "", errors.New("image not found")
-		// source, exists := postDoc.Find("picture source").Attr("srcset")
-		// if !exists {
-		// 	return "", errors.New("image not found")
-		// }
-		// return source, nil
 	default:
 		return "", fmt.Errorf("%s is not supported", hostname)
 	}
 }
 
-func SaveImage(client *http.Client, imageURL string, filename string) error {
-	response, err := client.Get(imageURL)
+// GetImage downloads an image from the given URL and returns its content as a byte slice, its content-type.
+func GetImage(client *http.Client, imageURL string) ([]byte, string, error) {
+	response, err := util.DoGETRetry(client, imageURL, 5)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to fetch image: status code %d", response.StatusCode)
+		return nil, "", fmt.Errorf("status code %d", response.StatusCode)
 	}
 
-	// Get the content type from the response header
-	contentType := response.Header.Get("Content-Type")
-	var extension string
+	// Read the image content into a byte slice
+	imageData, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return imageData, response.Header.Get("Content-Type"), nil
+}
+
+// Saves image to directory with its hash as a name, returns its hash
+func SaveImage(client *http.Client, imageURL string, directory string) (string, error) {
+	// Get the image
+	imageData, contentType, err := GetImage(client, imageURL)
+	if err != nil {
+		return "", fmt.Errorf("failed to get image: %w", err)
+	}
+
+	// Create a SHA-256 hasher
+	hasher := sha256.New()
+
+	_, err = hasher.Write(imageData)
+	if err != nil {
+		return "", fmt.Errorf("failed to calculate hash: %w", err)
+	}
+
+	// Calculate the SHA-256 hash of the image content
+	hashBytes := hasher.Sum(nil)
+	hash := hex.EncodeToString(hashBytes)
 
 	// Determine the file extension based on the content type
+	var extension string
 	switch contentType {
 	case "image/jpeg":
 		extension = ".jpg"
@@ -161,36 +157,32 @@ func SaveImage(client *http.Client, imageURL string, filename string) error {
 		if ext != "" {
 			extension = ext
 		} else {
-			return fmt.Errorf("unsupported image type: %s", contentType)
+			return "", fmt.Errorf("unsupported image type: %s", contentType)
 		}
 	}
 
-	if !strings.HasSuffix(filename, extension) {
-		filename += extension
-	}
+	// Create the filename using the hash and extension
+	filename := filepath.Join(directory, hash+extension)
 
+	// Create the output file
 	file, err := os.Create(filename)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("failed to create file: %w", err)
 	}
 	defer file.Close()
 
-	_, err = io.Copy(file, response.Body)
+	// Write the image data to the file
+	_, err = file.Write(imageData)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("failed to save image: %w", err)
 	}
 
-	return nil
+	return hash, nil
 }
 
 // Gets post ID, retrieves post tags and image URL
 func ProcessPost(client *http.Client, postURL url.URL) (*PostInfo, error) {
 	postDoc, err := getDocument(client, postURL)
-	if err != nil {
-		return nil, err
-	}
-
-	postID, err := GetPostIdFromDoc(postDoc, postURL.Hostname())
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +198,6 @@ func ProcessPost(client *http.Client, postURL url.URL) (*PostInfo, error) {
 	}
 
 	return &PostInfo{
-		PostID:   postID,
 		Tags:     tags,
 		ImageURL: imageURL,
 	}, nil
