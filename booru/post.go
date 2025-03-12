@@ -31,7 +31,7 @@ func NewTag(value string, isArtist bool, isCharacter bool) Tag {
 
 type PostInfo struct {
 	Tags     []Tag  `json:"tags"`
-	ImageURL string `json:"image_url"`
+	MediaURL string `json:"media_url"`
 }
 
 // Retrieves tags from booru post page document
@@ -71,37 +71,44 @@ func GetTags(client *http.Client, postURL url.URL) ([]Tag, error) {
 	return getTagsFromDoc(doc, postURL.Hostname())
 }
 
-// Retrieves image URL from post document
-func getImageURLFromDoc(postDoc *goquery.Document, hostname string) (string, error) {
+// Retrieves image or video URL from post document
+func getMediaURLFromDoc(postDoc *goquery.Document, hostname string) (string, error) {
 	switch hostname {
 	case "danbooru.donmai.us":
+		// IMAGE
 		// Try to get the href of .image-view-original-link
-		originalLink := postDoc.Find(".image-view-original-link")
-		if originalLink.Length() > 0 {
-			href, exists := originalLink.Attr("href")
+		imageOriginalLink := postDoc.Find(".image-view-original-link")
+		if imageOriginalLink.Length() > 0 {
+			href, exists := imageOriginalLink.Attr("href")
 			if exists {
 				return href, nil
 			}
 		}
 
 		// Fallback to srcset of <source> inside <picture>
-		source := postDoc.Find("picture source")
-		if source.Length() > 0 {
-			srcset, exists := source.Attr("srcset")
+		imageSource := postDoc.Find("picture source")
+		if imageSource.Length() > 0 {
+			srcset, exists := imageSource.Attr("srcset")
 			if exists {
 				return srcset, nil
 			}
 		}
 
-		return "", errors.New("image not found")
+		// VIDEO
+		videoSrc := postDoc.Find("#content .image-container video").AttrOr("src", "")
+		if videoSrc != "" {
+			return videoSrc, nil
+		}
+
+		return "", errors.New("media not found")
 	default:
 		return "", fmt.Errorf("%s is not supported", hostname)
 	}
 }
 
-// GetImage downloads an image from the given URL and returns its content as a byte slice, its content-type.
-func GetImage(client *http.Client, imageURL string) ([]byte, string, error) {
-	response, err := util.DoGETRetry(client, imageURL, 5)
+// Downloads a content from the given URL and returns its content as a byte slice along with its content-type.
+func GetContents(client *http.Client, contentURL string) ([]byte, string, error) {
+	response, err := util.DoGETRetry(client, contentURL, 5)
 	if err != nil {
 		return nil, "", err
 	}
@@ -112,37 +119,38 @@ func GetImage(client *http.Client, imageURL string) ([]byte, string, error) {
 	}
 
 	// Read the image content into a byte slice
-	imageData, err := io.ReadAll(response.Body)
+	data, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, "", err
 	}
 
-	return imageData, response.Header.Get("Content-Type"), nil
+	return data, response.Header.Get("Content-Type"), nil
 }
 
-// Saves image to directory with its hash as a name, returns its hash
-func SaveImage(client *http.Client, imageURL string, directory string) (string, error) {
-	// Get the image
-	imageData, contentType, err := GetImage(client, imageURL)
+// Saves media to directory with its hash as a name, returns its hash
+func SaveMedia(client *http.Client, mediaURL string, directory string) (string, error) {
+	// Get the media
+	data, contentType, err := GetContents(client, mediaURL)
 	if err != nil {
-		return "", fmt.Errorf("failed to get image: %w", err)
+		return "", fmt.Errorf("failed to get media: %w", err)
 	}
 
 	// Create a SHA-256 hasher
 	hasher := sha256.New()
 
-	_, err = hasher.Write(imageData)
+	_, err = hasher.Write(data)
 	if err != nil {
 		return "", fmt.Errorf("failed to calculate hash: %w", err)
 	}
 
-	// Calculate the SHA-256 hash of the image content
+	// Calculate the SHA-256 hash of the media content
 	hashBytes := hasher.Sum(nil)
 	hash := hex.EncodeToString(hashBytes)
 
 	// Determine the file extension based on the content type
 	var extension string
 	switch contentType {
+	// Image types
 	case "image/jpeg":
 		extension = ".jpg"
 	case "image/png":
@@ -151,13 +159,29 @@ func SaveImage(client *http.Client, imageURL string, directory string) (string, 
 		extension = ".gif"
 	case "image/webp":
 		extension = ".webp"
+
+	// Video types
+	case "video/mp4":
+		extension = ".mp4"
+	case "video/webm":
+		extension = ".webm"
+	case "video/ogg":
+		extension = ".ogg"
+	case "video/quicktime":
+		extension = ".mov"
+	case "video/x-msvideo":
+		extension = ".avi"
+	case "video/x-matroska":
+		extension = ".mkv"
+	case "video/x-flv":
+		extension = ".flv"
 	default:
 		// Fallback: Use the URL to get the extension
-		ext := filepath.Ext(imageURL)
+		ext := filepath.Ext(mediaURL)
 		if ext != "" {
 			extension = ext
 		} else {
-			return "", fmt.Errorf("unsupported image type: %s", contentType)
+			extension = ".bin"
 		}
 	}
 
@@ -171,10 +195,10 @@ func SaveImage(client *http.Client, imageURL string, directory string) (string, 
 	}
 	defer file.Close()
 
-	// Write the image data to the file
-	_, err = file.Write(imageData)
+	// Write the data to the file
+	_, err = file.Write(data)
 	if err != nil {
-		return "", fmt.Errorf("failed to save image: %w", err)
+		return "", fmt.Errorf("failed to save media: %w", err)
 	}
 
 	return hash, nil
@@ -192,13 +216,13 @@ func ProcessPost(client *http.Client, postURL url.URL) (*PostInfo, error) {
 		return nil, err
 	}
 
-	imageURL, err := getImageURLFromDoc(postDoc, postURL.Hostname())
+	mediaURL, err := getMediaURLFromDoc(postDoc, postURL.Hostname())
 	if err != nil {
 		return nil, err
 	}
 
 	return &PostInfo{
 		Tags:     tags,
-		ImageURL: imageURL,
+		MediaURL: mediaURL,
 	}, nil
 }

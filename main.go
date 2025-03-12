@@ -125,46 +125,31 @@ func init() {
 			return NewResult(false, nil)
 		}
 
-		// Retry logic with exponential backoff
-		var err error
-		var postInfo *booru.PostInfo
-		for attempt := 1; uint(attempt) <= *maxRetries; attempt++ {
-			postInfo, err = booru.ProcessPost(httpClient, j.PostURL)
-			if err == nil {
-				break
-			}
-
-			logger.Error("[Worker] Attempt %d on %s: %s", attempt, j.PostURL.String(), err)
-
-			// Exponential backoff
-			if uint(attempt) != *maxRetries {
-				time.Sleep(time.Duration(attempt*attempt) * time.Second)
-			}
-		}
-
+		// Process booru post (retry batteries included)
+		postInfo, err := booru.ProcessPost(httpClient, j.PostURL)
 		if err != nil {
 			logger.Error("[Worker] Failed after retries: %s", err)
 			return NewResult(false, nil)
 		}
 
-		// Save image
-		imageHash, err := booru.SaveImage(
+		// Save media (retry batteries included)
+		mediaHash, err := booru.SaveMedia(
 			httpClient,
-			postInfo.ImageURL,
+			postInfo.MediaURL,
 			*outputDir,
 		)
 		if err != nil {
-			logger.Error("[Worker] Failed to save image: %s", err)
+			logger.Error("[Worker] Failed to save media: %s", err)
 			return NewResult(false, nil)
 		}
 
 		// Save metadata to file
 		err = booru.SaveMetadataJson(
-			booru.NewMetadata(*postInfo, j.PostURL.Hostname(), imageHash),
-			filepath.Join(*outputDir, "metadata.json"),
+			booru.NewMetadata(*postInfo, j.PostURL.Hostname(), mediaHash),
+			filepath.Join(*outputDir, fmt.Sprintf("%s_metadata.json", mediaHash)),
 		)
 		if err != nil {
-			logger.Error("[Worker] Failed to save metadata for %s: %s", imageHash, err)
+			logger.Error("[Worker] Failed to save metadata for %s: %s", mediaHash, err)
 			return NewResult(false, nil)
 		}
 
@@ -198,7 +183,7 @@ func main() {
 	go func() {
 		for result := range pool.GetResults() {
 			if result.Success {
-				logger.Info("[Result] Done with %s", result.Info.ImageURL)
+				logger.Info("[Result] Done with %s", result.Info.MediaURL)
 			} else {
 				logger.Warning("[Result] Fail")
 			}
@@ -234,26 +219,10 @@ func main() {
 				continue
 			}
 
-			// Retry logic with exponential backoff
-			var posts []string
-			var err error
-			for attempt := 1; uint(attempt) <= *maxRetries; attempt++ {
-				posts, err = booru.GetPosts(httpClient, pageURL)
-				if err == nil {
-					break
-				}
-
-				// Log the error
-				logger.Error("[Main] Attempt %d on %s: %s", attempt, pageURL.String(), err)
-
-				// Exponential backoff
-				if uint(attempt) != *maxRetries {
-					time.Sleep(time.Duration(attempt*attempt) * time.Second)
-				}
-			}
-
+			// Retrieve posts (retry batteries included)
+			posts, err := booru.GetPosts(httpClient, pageURL)
 			if err != nil {
-				logger.Error("[Main] Failed after retries: %s", err)
+				logger.Error("[Main] Failed after retries: %s... Skipping to the next page", err)
 				continue
 			}
 
