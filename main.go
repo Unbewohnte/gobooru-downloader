@@ -9,7 +9,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"path"
 	"strings"
 	"sync"
 	"syscall"
@@ -35,29 +35,32 @@ var (
 	silent      *bool   = flag.Bool("silent", false, "Output nothing to the console")
 	maxRetries  *uint   = flag.Uint("max-retries", 3, "Set max http request retry count")
 	imagesOnly  *bool   = flag.Bool("images-only", false, "Save only images")
+	videosOnly  *bool   = flag.Bool("videos-only", false, "Save only videos")
+	tags        *string = flag.String("tags", "", "Set tags")
+	fromPage    *uint   = flag.Uint("from-page", 1, "Set initial page number")
 )
 
 type Job struct {
-	PostURL url.URL
+	Post booru.Post
 }
 
-func NewJob(postURL url.URL) Job {
+func NewJob(post booru.Post) Job {
 	return Job{
-		PostURL: postURL,
+		Post: post,
 	}
 }
 
 type Result struct {
-	Success bool            `json:"success"`
-	Skip    bool            `json:"skip"`
-	Info    *booru.PostInfo `json:"info"`
+	Success  bool
+	Skip     bool
+	Metadata *booru.Metadata
 }
 
-func NewResult(success bool, skip bool, postInfo *booru.PostInfo) Result {
+func NewResult(success bool, skip bool, metadata *booru.Metadata) Result {
 	return Result{
-		Success: success,
-		Skip:    skip,
-		Info:    postInfo,
+		Success:  success,
+		Skip:     skip,
+		Metadata: metadata,
 	}
 }
 
@@ -132,38 +135,40 @@ func init() {
 			return NewResult(false, false, nil)
 		}
 
-		// Process booru post (retry batteries included)
-		postInfo, err := booru.ProcessPost(httpClient, j.PostURL, *imagesOnly)
-		if err != nil {
-			if err == booru.ErrVideoPost {
-				return NewResult(false, true, nil)
-			}
-			logger.Error("[Worker] Failed after retries: %s", err)
-			return NewResult(false, false, nil)
+		// Process booru post
+
+		mediaName := path.Base(j.Post.MediaURL())
+
+		if *imagesOnly && !j.Post.IsImage() {
+			// Skip
+			logger.Info("[Worker] Skipping %s", mediaName)
+			return NewResult(false, true, j.Post.Metadata())
 		}
 
-		// Save media (retry batteries included)
-		mediaHash, err := booru.SaveMedia(
-			httpClient,
-			postInfo.MediaURL,
+		if *videosOnly && !j.Post.IsVideo() {
+			// Skip
+			logger.Info("[Worker] Skipping %s", mediaName)
+			return NewResult(false, true, j.Post.Metadata())
+		}
+
+		// Save media
+		err = j.Post.SaveMedia(
 			*outputDir,
+			httpClient,
 		)
 		if err != nil {
-			logger.Error("[Worker] Failed to save media: %s", err)
-			return NewResult(false, false, nil)
+			logger.Error("[Worker] Failed to save %s: %s", mediaName, err)
+			return NewResult(false, false, j.Post.Metadata())
 		}
 
-		// Save metadata to file
-		err = booru.SaveMetadataJson(
-			booru.NewMetadata(*postInfo, j.PostURL.Hostname(), mediaHash),
-			filepath.Join(*outputDir, fmt.Sprintf("%s_metadata.json", mediaHash)),
-		)
+		// Save metadata
+		err = j.Post.SaveMetadata(*outputDir)
 		if err != nil {
-			logger.Error("[Worker] Failed to save metadata for %s: %s", mediaHash, err)
-			return NewResult(false, false, nil)
+			logger.Error("[Worker] Failed to save metadata for %+v: %s", mediaName, err)
+			return NewResult(false, false, j.Post.Metadata())
 		}
 
-		return NewResult(true, false, postInfo)
+		return NewResult(true, false, j.Post.Metadata())
 	}
 
 	// Handle interrupt signals
@@ -193,7 +198,7 @@ func main() {
 	go func() {
 		for result := range pool.GetResults() {
 			if result.Success {
-				logger.Info("[Result] Done with %s", result.Info.MediaURL)
+				logger.Info("[Result] Done with %s", result.Metadata.Hash)
 			} else if !result.Skip {
 				logger.Warning("[Result] Fail")
 			}
@@ -203,7 +208,10 @@ func main() {
 
 	// Get the engine runnin'
 	galleryURL, _ := url.Parse(*booruURL)
-	var currentPage uint64 = 0
+	if *fromPage == 0 {
+		*fromPage = 1
+	}
+	var currentPage uint = *fromPage
 
 	for {
 		select {
@@ -213,15 +221,8 @@ func main() {
 			return
 		default:
 			// Retrieve a new gallery page and find posts
-			currentPage++
 
-			// Create a copy of the original galleryURL to preserve its query
-			pageURL := *galleryURL
-			query := pageURL.Query()
-			query.Set("page", fmt.Sprintf("%d", currentPage))
-			pageURL.RawQuery = query.Encode()
-
-			logger.Info("[Main] On %s", pageURL.String())
+			logger.Info("[Main] On page %d", currentPage)
 
 			// Wait for the rate limiter
 			if err := limiter.Wait(context.Background()); err != nil {
@@ -230,15 +231,13 @@ func main() {
 			}
 
 			// Retrieve posts (retry batteries included)
-			posts, err := booru.GetPosts(httpClient, pageURL)
+			posts, err := booru.GetPosts(*galleryURL, currentPage, *tags, httpClient)
 			if err != nil {
 				logger.Error("[Main] Failed after retries: %s... Skipping to the next page", err)
 				continue
 			}
 
 			// Submit posts to the worker pool
-			pageURL.RawQuery = ""
-			pageURL.Path = "/"
 			for _, post := range posts {
 				select {
 				case <-shutdown:
@@ -246,17 +245,13 @@ func main() {
 					logger.Info("Shutting down...")
 					return
 				default:
-					postURL, err := url.Parse(pageURL.String() + post[1:])
-					if err != nil {
-						logger.Error("[Main] Constructed an invalid post URL: %s. Skipping all posts for this gallery", err)
-						break
-					}
-					postURL.RawQuery = ""
-
 					wg.Add(1) // Track the job
-					pool.Submit(NewJob(*postURL))
+					pool.Submit(NewJob(post))
 				}
 			}
+
+			// Bump page number
+			currentPage++
 		}
 	}
 }

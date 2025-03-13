@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -33,4 +34,25 @@ func DoGETRetry(client *http.Client, url string) (*http.Response, error) {
 	}
 
 	return nil, fmt.Errorf("status code: %d", response.StatusCode)
+}
+
+// Downloads a content from the given URL and returns its content as a byte slice
+func GetContents(client *http.Client, contentURL string) ([]byte, error) {
+	response, err := DoGETRetry(client, contentURL)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status code %d", response.StatusCode)
+	}
+
+	// Read the content into a byte slice
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
