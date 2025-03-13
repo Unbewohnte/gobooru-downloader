@@ -206,7 +206,7 @@ func main() {
 	// Print results
 	go func() {
 		for result := range pool.GetResults() {
-			if downloadedGB >= *downloadLimitGb {
+			if downloadedGB >= *downloadLimitGb && *downloadLimitGb != 0.0 {
 				logger.Info("[Result] Download limit has been reached. Stopping...")
 				signalListener <- os.Interrupt // Send interrupt signal
 			}
