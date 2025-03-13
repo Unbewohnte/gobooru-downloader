@@ -23,21 +23,22 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const VERSION string = "v0.1"
+const VERSION string = "v0.2"
 
 var (
-	version     *bool   = flag.Bool("version", false, "Print version information and exit")
-	booruURL    *string = flag.String("url", "https://danbooru.donmai.us/", "URL to the booru page (blank for danbooru.donmai.us)")
-	proxyString *string = flag.String("proxy", "", "Set proxy connection string")
-	workerCount *uint   = flag.Uint("workers", 8, "Set worker count")
-	outputDir   *string = flag.String("output", "output", "Set output directory name")
-	silent      *bool   = flag.Bool("silent", false, "Output nothing to the console")
-	maxRetries  *uint   = flag.Uint("max-retries", 3, "Set max http request retry count")
-	imagesOnly  *bool   = flag.Bool("only-images", false, "Save only images")
-	videosOnly  *bool   = flag.Bool("only-videos", false, "Save only videos")
-	tags        *string = flag.String("tags", "", "Set tags")
-	fromPage    *uint   = flag.Uint("from-page", 1, "Set initial page number")
-	maxFileSize *uint   = flag.Uint("max-filesize-mb", 0, "Set max file size to be allowed for download (0 for no cap)")
+	version         *bool    = flag.Bool("version", false, "Print version information and exit")
+	booruURL        *string  = flag.String("url", "https://danbooru.donmai.us/", "URL to the booru page (blank for danbooru.donmai.us)")
+	proxyString     *string  = flag.String("proxy", "", "Set proxy connection string")
+	workerCount     *uint    = flag.Uint("workers", 8, "Set worker count")
+	outputDir       *string  = flag.String("output", "output", "Set output directory name")
+	silent          *bool    = flag.Bool("silent", false, "Output nothing to the console")
+	maxRetries      *uint    = flag.Uint("max-retries", 3, "Set max http request retry count")
+	imagesOnly      *bool    = flag.Bool("only-images", false, "Save only images")
+	videosOnly      *bool    = flag.Bool("only-videos", false, "Save only videos")
+	tags            *string  = flag.String("tags", "", "Set tags")
+	fromPage        *uint    = flag.Uint("from-page", 1, "Set initial page number")
+	maxFileSize     *uint    = flag.Uint("max-filesize-mb", 0, "Set max file size in megabytes to be allowed for download (0 for no cap)")
+	downloadLimitGb *float64 = flag.Float64("download-limit-gb", 0.0, "Set download limit in gigabytes. The program will quit after the limit was reached (0 for no cap)")
 )
 
 type Job struct {
@@ -65,12 +66,14 @@ func NewResult(success bool, skip bool, metadata *booru.Metadata) Result {
 }
 
 var (
-	pool       *workerpool.Pool[Job, Result]
-	workerFunc func(Job) Result
-	httpClient *http.Client
-	limiter    *rate.Limiter
-	wg         sync.WaitGroup
-	shutdown   chan struct{}
+	pool           *workerpool.Pool[Job, Result]
+	workerFunc     func(Job) Result
+	httpClient     *http.Client
+	limiter        *rate.Limiter
+	wg             sync.WaitGroup
+	shutdown       chan struct{}
+	signalListener chan os.Signal = make(chan os.Signal, 1)
+	downloadedGB                  = 0.0
 )
 
 func init() {
@@ -151,9 +154,11 @@ func init() {
 			return NewResult(false, true, j.Post.Metadata())
 		}
 
-		if j.Post.Size()/1024/1024 > uint64(*maxFileSize) {
-			logger.Info("[Worker] Skipping %s because it's too large", mediaName)
-			return NewResult(false, true, j.Post.Metadata())
+		if *maxFileSize != 0 {
+			if j.Post.Size()/1024/1024 > uint64(*maxFileSize) {
+				logger.Info("[Worker] Skipping %s because it's too large", mediaName)
+				return NewResult(false, true, j.Post.Metadata())
+			}
 		}
 
 		// Save media
@@ -177,10 +182,9 @@ func init() {
 	}
 
 	// Handle interrupt signals
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(signalListener, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		<-c
+		<-signalListener
 		logger.Info("Caught interrupt, stopping...")
 		// Signal shutdown
 		close(shutdown)
@@ -202,10 +206,24 @@ func main() {
 	// Print results
 	go func() {
 		for result := range pool.GetResults() {
+			if downloadedGB >= *downloadLimitGb {
+				logger.Info("[Result] Download limit has been reached. Stopping...")
+				signalListener <- os.Interrupt // Send interrupt signal
+			}
+
 			if result.Success {
-				logger.Info("[Result] Done with %s", result.Metadata.Hash)
+				logger.Info(
+					"[Result] %s (%.02fMB)",
+					result.Metadata.Hash,
+					float64(result.Metadata.Size)/1024.0/1024.0,
+				)
+
+				// Account for download limit
+				downloadedGB += float64(result.Metadata.Size) / 1024.0 / 1024.0 / 1024.0
 			} else if !result.Skip {
-				logger.Warning("[Result] Fail")
+				if result.Metadata != nil {
+					logger.Warning("[Result] Fail on %s", result.Metadata.URL)
+				}
 			}
 			wg.Done() // Mark job as done
 		}

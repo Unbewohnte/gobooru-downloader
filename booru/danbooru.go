@@ -239,6 +239,10 @@ func (post *DanbooruPost) IsVideo() bool {
 	return post.MediaAsset.Duration > 0.0 || videoExtensions[post.FileExt]
 }
 
+func (post *DanbooruPost) Size() uint64 {
+	return uint64(post.FileSize)
+}
+
 func (post *DanbooruPost) Metadata() *Metadata {
 	return &Metadata{
 		Tags:       post.Tags(),
@@ -248,9 +252,6 @@ func (post *DanbooruPost) Metadata() *Metadata {
 		Hash:       post.MediaHash,
 		FromHost:   "danbooru.donmai.us",
 		URL:        post.MediaURL(),
+		Size:       post.Size(),
 	}
-}
-
-func (post *DanbooruPost) Size() uint64 {
-	return uint64(post.FileSize)
 }

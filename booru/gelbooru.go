@@ -35,6 +35,7 @@ type Attributes struct {
 
 type GelbooruPost struct {
 	MediaHash     string
+	FileSize      uint64
 	ID            int    `json:"id"`
 	CreatedAt     string `json:"created_at"`
 	Score         int    `json:"score"`
@@ -160,6 +161,9 @@ func (post *GelbooruPost) SaveMedia(directory string, client *http.Client) error
 		return err
 	}
 
+	// Remember file size
+	post.FileSize = uint64(len(contents))
+
 	return nil
 }
 
@@ -225,9 +229,10 @@ func (post *GelbooruPost) Metadata() *Metadata {
 		Hash:       post.MediaHash,
 		FromHost:   "gelbooru.com",
 		URL:        post.MediaURL(),
+		Size:       post.Size(),
 	}
 }
 
 func (post *GelbooruPost) Size() uint64 {
-	return 0
+	return post.FileSize
 }

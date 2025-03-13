@@ -14,6 +14,7 @@ type Metadata struct {
 	Hash       string   `json:"hash"`
 	FromHost   string   `json:"from_host"`
 	URL        string   `json:"url"`
+	Size       uint64   `json:"size"`
 }
 
 type Post interface {
