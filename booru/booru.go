@@ -49,6 +49,20 @@ func GetPosts(booruURL url.URL, page uint, tags string, client *http.Client) ([]
 		}
 
 		return posts, nil
+
+	case "gelbooru.com":
+		gelbooruPosts, err := GetPostsGelbooru(booruURL, page, tags, client)
+		if err != nil {
+			return nil, err
+		}
+
+		posts := make([]Post, len(gelbooruPosts))
+		for i, post := range gelbooruPosts {
+			posts[i] = &post
+		}
+
+		return posts, nil
+
 	default:
 		return nil, ErrBooruNotSupported
 	}
