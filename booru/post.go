@@ -1,6 +1,7 @@
 package booru
 
 import (
+	"Unbewohnte/gobooru-downloader/logger"
 	"Unbewohnte/gobooru-downloader/util"
 	"crypto/sha256"
 	"encoding/hex"
@@ -71,10 +72,21 @@ func GetTags(client *http.Client, postURL url.URL) ([]Tag, error) {
 	return getTagsFromDoc(doc, postURL.Hostname())
 }
 
+var ErrVideoPost error = errors.New("it is a video post")
+
 // Retrieves image or video URL from post document
-func getMediaURLFromDoc(postDoc *goquery.Document, hostname string) (string, error) {
+func getMediaURLFromDoc(postDoc *goquery.Document, hostname string, imagesOnly bool) (string, error) {
 	switch hostname {
 	case "danbooru.donmai.us":
+		// VIDEO
+		videoSrc := postDoc.Find("#content .image-container video").AttrOr("src", "")
+		if videoSrc != "" && imagesOnly {
+			return "", ErrVideoPost
+		}
+		if videoSrc != "" {
+			return videoSrc, nil
+		}
+
 		// IMAGE
 		// Try to get the href of .image-view-original-link
 		imageOriginalLink := postDoc.Find(".image-view-original-link")
@@ -94,12 +106,6 @@ func getMediaURLFromDoc(postDoc *goquery.Document, hostname string) (string, err
 			}
 		}
 
-		// VIDEO
-		videoSrc := postDoc.Find("#content .image-container video").AttrOr("src", "")
-		if videoSrc != "" {
-			return videoSrc, nil
-		}
-
 		return "", errors.New("media not found")
 	default:
 		return "", fmt.Errorf("%s is not supported", hostname)
@@ -108,17 +114,18 @@ func getMediaURLFromDoc(postDoc *goquery.Document, hostname string) (string, err
 
 // Downloads a content from the given URL and returns its content as a byte slice along with its content-type.
 func GetContents(client *http.Client, contentURL string) ([]byte, string, error) {
-	response, err := util.DoGETRetry(client, contentURL, 5)
+	response, err := util.DoGETRetry(client, contentURL)
 	if err != nil {
 		return nil, "", err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
+		logger.Warning("DEBUG %s", contentURL)
 		return nil, "", fmt.Errorf("status code %d", response.StatusCode)
 	}
 
-	// Read the image content into a byte slice
+	// Read the content into a byte slice
 	data, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, "", err
@@ -204,8 +211,8 @@ func SaveMedia(client *http.Client, mediaURL string, directory string) (string, 
 	return hash, nil
 }
 
-// Gets post ID, retrieves post tags and image URL
-func ProcessPost(client *http.Client, postURL url.URL) (*PostInfo, error) {
+// Gets post ID, retrieves post tags and media URL
+func ProcessPost(client *http.Client, postURL url.URL, imagesOnly bool) (*PostInfo, error) {
 	postDoc, err := getDocument(client, postURL)
 	if err != nil {
 		return nil, err
@@ -216,7 +223,7 @@ func ProcessPost(client *http.Client, postURL url.URL) (*PostInfo, error) {
 		return nil, err
 	}
 
-	mediaURL, err := getMediaURLFromDoc(postDoc, postURL.Hostname())
+	mediaURL, err := getMediaURLFromDoc(postDoc, postURL.Hostname(), imagesOnly)
 	if err != nil {
 		return nil, err
 	}

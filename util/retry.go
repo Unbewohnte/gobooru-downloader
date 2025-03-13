@@ -6,13 +6,15 @@ import (
 	"time"
 )
 
+var MAXRETRIES uint = 5
+
 // DoGETRetry performs a GET request to the specified URL with retries.
 // It retries the request up to `retries` times if it fails due to transient errors.
-func DoGETRetry(client *http.Client, url string, retries uint) (*http.Response, error) {
+func DoGETRetry(client *http.Client, url string) (*http.Response, error) {
 	var response *http.Response
 	var err error
 
-	for attempt := uint(0); attempt <= retries; attempt++ {
+	for attempt := uint(0); attempt <= MAXRETRIES; attempt++ {
 		// Perform the GET request
 		response, err = client.Get(url)
 		if err == nil && response.StatusCode < 500 {
@@ -20,7 +22,7 @@ func DoGETRetry(client *http.Client, url string, retries uint) (*http.Response, 
 		}
 
 		// Wait before retrying
-		if uint(attempt) != retries {
+		if attempt < MAXRETRIES {
 			time.Sleep(time.Duration(attempt*attempt) * time.Second)
 		}
 	}

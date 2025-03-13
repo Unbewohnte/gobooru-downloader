@@ -18,6 +18,7 @@ import (
 	"Unbewohnte/gobooru-downloader/booru"
 	"Unbewohnte/gobooru-downloader/logger"
 	"Unbewohnte/gobooru-downloader/proxy"
+	"Unbewohnte/gobooru-downloader/util"
 	"Unbewohnte/gobooru-downloader/workerpool"
 
 	"golang.org/x/time/rate"
@@ -33,6 +34,7 @@ var (
 	outputDir   *string = flag.String("output", "output", "Set output directory name")
 	silent      *bool   = flag.Bool("silent", false, "Output nothing to the console")
 	maxRetries  *uint   = flag.Uint("max-retries", 3, "Set max http request retry count")
+	imagesOnly  *bool   = flag.Bool("images-only", false, "Save only images")
 )
 
 type Job struct {
@@ -47,12 +49,14 @@ func NewJob(postURL url.URL) Job {
 
 type Result struct {
 	Success bool            `json:"success"`
+	Skip    bool            `json:"skip"`
 	Info    *booru.PostInfo `json:"info"`
 }
 
-func NewResult(success bool, postInfo *booru.PostInfo) Result {
+func NewResult(success bool, skip bool, postInfo *booru.PostInfo) Result {
 	return Result{
 		Success: success,
+		Skip:    skip,
 		Info:    postInfo,
 	}
 }
@@ -91,6 +95,9 @@ func init() {
 		httpClient = http.DefaultClient
 	}
 
+	// Set retry count
+	util.MAXRETRIES = *maxRetries
+
 	// Check if booruURL is a valid URL
 	_, err := url.Parse(*booruURL)
 	if err != nil {
@@ -122,14 +129,17 @@ func init() {
 		// Wait for the rate limiter
 		if err := limiter.Wait(context.Background()); err != nil {
 			logger.Error("[Worker] Rate limiter error: %s", err)
-			return NewResult(false, nil)
+			return NewResult(false, false, nil)
 		}
 
 		// Process booru post (retry batteries included)
-		postInfo, err := booru.ProcessPost(httpClient, j.PostURL)
+		postInfo, err := booru.ProcessPost(httpClient, j.PostURL, *imagesOnly)
 		if err != nil {
+			if err == booru.ErrVideoPost {
+				return NewResult(false, true, nil)
+			}
 			logger.Error("[Worker] Failed after retries: %s", err)
-			return NewResult(false, nil)
+			return NewResult(false, false, nil)
 		}
 
 		// Save media (retry batteries included)
@@ -140,7 +150,7 @@ func init() {
 		)
 		if err != nil {
 			logger.Error("[Worker] Failed to save media: %s", err)
-			return NewResult(false, nil)
+			return NewResult(false, false, nil)
 		}
 
 		// Save metadata to file
@@ -150,10 +160,10 @@ func init() {
 		)
 		if err != nil {
 			logger.Error("[Worker] Failed to save metadata for %s: %s", mediaHash, err)
-			return NewResult(false, nil)
+			return NewResult(false, false, nil)
 		}
 
-		return NewResult(true, postInfo)
+		return NewResult(true, false, postInfo)
 	}
 
 	// Handle interrupt signals
@@ -184,7 +194,7 @@ func main() {
 		for result := range pool.GetResults() {
 			if result.Success {
 				logger.Info("[Result] Done with %s", result.Info.MediaURL)
-			} else {
+			} else if !result.Skip {
 				logger.Warning("[Result] Fail")
 			}
 			wg.Done() // Mark job as done
@@ -241,6 +251,7 @@ func main() {
 						logger.Error("[Main] Constructed an invalid post URL: %s. Skipping all posts for this gallery", err)
 						break
 					}
+					postURL.RawQuery = ""
 
 					wg.Add(1) // Track the job
 					pool.Submit(NewJob(*postURL))

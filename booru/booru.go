@@ -10,7 +10,7 @@ import (
 
 // Performs GET on given url, returns goquery.Document
 func getDocument(client *http.Client, url url.URL) (*goquery.Document, error) {
-	response, err := util.DoGETRetry(client, url.String(), 5)
+	response, err := util.DoGETRetry(client, url.String())
 	if err != nil {
 		return nil, err
 	}
