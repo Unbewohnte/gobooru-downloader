@@ -18,7 +18,6 @@ import (
 	"Unbewohnte/gobooru-downloader/booru"
 	"Unbewohnte/gobooru-downloader/logger"
 	"Unbewohnte/gobooru-downloader/proxy"
-	"Unbewohnte/gobooru-downloader/util"
 	"Unbewohnte/gobooru-downloader/workerpool"
 
 	"golang.org/x/time/rate"
@@ -100,7 +99,7 @@ func init() {
 	}
 
 	// Set retry count
-	util.MAXRETRIES = *maxRetries
+	proxy.MAXRETRIES = *maxRetries
 
 	// Check if booruURL is a valid URL
 	_, err := url.Parse(*booruURL)

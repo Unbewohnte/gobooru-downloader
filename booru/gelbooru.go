@@ -1,7 +1,7 @@
 package booru
 
 import (
-	"Unbewohnte/gobooru-downloader/util"
+	"Unbewohnte/gobooru-downloader/proxy"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -89,7 +89,7 @@ func GetPostsGelbooru(gelbooruURL url.URL, page uint, tags string, client *http.
 	gelbooruURL.RawQuery = query.Encode()
 	gelbooruURL.Path = "/index.php"
 
-	data, err := util.GetContents(client, gelbooruURL.String())
+	data, err := proxy.GetContents(client, gelbooruURL.String())
 	if err != nil {
 		return nil, err
 	}
@@ -133,7 +133,7 @@ func (post *GelbooruPost) MediaURL() string {
 
 func (post *GelbooruPost) SaveMedia(directory string, client *http.Client) error {
 	// Get file contents
-	contents, err := util.GetContents(client, post.MediaURL())
+	contents, err := proxy.GetContents(client, post.MediaURL())
 	if err != nil {
 		return err
 	}

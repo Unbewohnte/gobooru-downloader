@@ -1,7 +1,7 @@
 package booru
 
 import (
-	"Unbewohnte/gobooru-downloader/util"
+	"Unbewohnte/gobooru-downloader/proxy"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -102,7 +102,7 @@ func GetPostsDanbooru(danbooruURL url.URL, page uint, tags string, client *http.
 	danbooruURL.RawQuery = query.Encode()
 	danbooruURL.Path = "/posts.json"
 
-	data, err := util.GetContents(client, danbooruURL.String())
+	data, err := proxy.GetContents(client, danbooruURL.String())
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +156,7 @@ func (post *DanbooruPost) MediaURL() string {
 
 func (post *DanbooruPost) SaveMedia(directory string, client *http.Client) error {
 	// Get file contents
-	contents, err := util.GetContents(client, post.MediaURL())
+	contents, err := proxy.GetContents(client, post.MediaURL())
 	if err != nil {
 		return err
 	}
