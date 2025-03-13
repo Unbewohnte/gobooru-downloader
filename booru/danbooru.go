@@ -168,9 +168,6 @@ func (post *DanbooruPost) SaveMedia(directory string, client *http.Client) error
 	post.MediaHash = mediaHash
 
 	fileExt := filepath.Ext(post.MediaURL())
-	if fileExt == "" {
-		fileExt = ".bin"
-	}
 
 	// Save media
 	path := filepath.Join(directory, mediaHash+fileExt)
@@ -252,4 +249,8 @@ func (post *DanbooruPost) Metadata() *Metadata {
 		FromHost:   "danbooru.donmai.us",
 		URL:        post.MediaURL(),
 	}
+}
+
+func (post *DanbooruPost) Size() uint64 {
+	return uint64(post.FileSize)
 }

@@ -30,14 +30,15 @@ var (
 	version     *bool   = flag.Bool("version", false, "Print version information and exit")
 	booruURL    *string = flag.String("url", "https://danbooru.donmai.us/", "URL to the booru page (blank for danbooru.donmai.us)")
 	proxyString *string = flag.String("proxy", "", "Set proxy connection string")
-	workerCount *uint   = flag.Uint("workers", 12, "Set worker count")
+	workerCount *uint   = flag.Uint("workers", 8, "Set worker count")
 	outputDir   *string = flag.String("output", "output", "Set output directory name")
 	silent      *bool   = flag.Bool("silent", false, "Output nothing to the console")
 	maxRetries  *uint   = flag.Uint("max-retries", 3, "Set max http request retry count")
-	imagesOnly  *bool   = flag.Bool("images-only", false, "Save only images")
-	videosOnly  *bool   = flag.Bool("videos-only", false, "Save only videos")
+	imagesOnly  *bool   = flag.Bool("only-images", false, "Save only images")
+	videosOnly  *bool   = flag.Bool("only-videos", false, "Save only videos")
 	tags        *string = flag.String("tags", "", "Set tags")
 	fromPage    *uint   = flag.Uint("from-page", 1, "Set initial page number")
+	maxFileSize *uint   = flag.Uint("max-filesize-mb", 0, "Set max file size to be allowed for download (0 for no cap)")
 )
 
 type Job struct {
@@ -122,8 +123,8 @@ func init() {
 	// Create a worker pool
 	pool = workerpool.NewPool[Job, Result](*workerCount)
 
-	// Rate limiter: Allow 1 request per second with a burst of 8
-	limiter = rate.NewLimiter(rate.Every(time.Second), 8)
+	// Rate limiter: Allow 1 request per second with a burst of the amount of workers
+	limiter = rate.NewLimiter(rate.Every(time.Second), int(*workerCount))
 
 	// Shutdown channel
 	shutdown = make(chan struct{})
@@ -141,13 +142,18 @@ func init() {
 
 		if *imagesOnly && !j.Post.IsImage() {
 			// Skip
-			logger.Info("[Worker] Skipping %s", mediaName)
+			logger.Info("[Worker] Skipping %s, it's not an image", mediaName)
 			return NewResult(false, true, j.Post.Metadata())
 		}
 
 		if *videosOnly && !j.Post.IsVideo() {
 			// Skip
-			logger.Info("[Worker] Skipping %s", mediaName)
+			logger.Info("[Worker] Skipping %s, it's not a video", mediaName)
+			return NewResult(false, true, j.Post.Metadata())
+		}
+
+		if j.Post.Size()/1024/1024 > uint64(*maxFileSize) {
+			logger.Info("[Worker] Skipping %s because it's too large", mediaName)
 			return NewResult(false, true, j.Post.Metadata())
 		}
 

@@ -30,6 +30,7 @@ type Post interface {
 	Metadata() *Metadata
 	IsImage() bool
 	IsVideo() bool
+	Size() uint64
 }
 
 var ErrBooruNotSupported error = errors.New("this booru is not supported")
