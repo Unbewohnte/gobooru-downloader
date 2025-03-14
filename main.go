@@ -1,3 +1,21 @@
+/*
+   gobooru-downloader
+   Copyright (C) 2025 Kasyanov Nikolay Alexeevich (Unbewohnte)
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package main
 
 import (
@@ -81,13 +99,29 @@ func init() {
 
 	// Process version
 	if *version {
-		fmt.Printf("GOBOORU-DOWNLOADER %v\n(C) 2025 Kasyanov Nikolay Alexeevich (Unbewohnte)\n", VERSION)
+		fmt.Printf(
+			`gobooru-downloader %v
+Copyright (C) 2025  Kasyanov Nikolay Alexeevich (Unbewohnte)
+This program comes with ABSOLUTELY NO WARRANTY.
+This is free software, and you are welcome to redistribute it
+under certain conditions (see COPYING)
+`, VERSION)
 		os.Exit(0)
 	}
 
 	if *silent {
 		logger.SetOutput(io.Discard)
 	}
+
+	// Print banner
+	fmt.Print(
+		` ██████╗  ██████╗ ██████╗  ██████╗  ██████╗ ██████╗ ██╗   ██╗      ██████╗ ██╗    ██╗
+██╔════╝ ██╔═══██╗██╔══██╗██╔═══██╗██╔═══██╗██╔══██╗██║   ██║      ██╔══██╗██║    ██║
+██║  ███╗██║   ██║██████╔╝██║   ██║██║   ██║██████╔╝██║   ██║█████╗██║  ██║██║ █╗ ██║
+██║   ██║██║   ██║██╔══██╗██║   ██║██║   ██║██╔══██╗██║   ██║╚════╝██║  ██║██║███╗██║
+╚██████╔╝╚██████╔╝██████╔╝╚██████╔╝╚██████╔╝██║  ██║╚██████╔╝      ██████╔╝╚███╔███╔╝
+ ╚═════╝  ╚═════╝ ╚═════╝  ╚═════╝  ╚═════╝ ╚═╝  ╚═╝ ╚═════╝       ╚═════╝  ╚══╝╚══╝ 
+` + fmt.Sprintf("%s\n", VERSION))
 
 	// Process proxy
 	if strings.TrimSpace(*proxyString) != "" {
@@ -256,7 +290,7 @@ func main() {
 			// Retrieve posts (retry batteries included)
 			posts, err := booru.GetPosts(*galleryURL, currentPage, *tags, httpClient)
 			if err != nil {
-				logger.Error("[Main] Failed after retries: %s... Skipping to the next page", err)
+				logger.Error("[Main] Failed after retries: %s...", err)
 				continue
 			}
 

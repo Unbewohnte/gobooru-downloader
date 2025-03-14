@@ -1,3 +1,21 @@
+/*
+   gobooru-downloader
+   Copyright (C) 2025 Kasyanov Nikolay Alexeevich (Unbewohnte)
+
+   This program is free software: you can redistribute it and/or modify
+   it under the terms of the GNU General Public License as published by
+   the Free Software Foundation, either version 3 of the License, or
+   (at your option) any later version.
+
+   This program is distributed in the hope that it will be useful,
+   but WITHOUT ANY WARRANTY; without even the implied warranty of
+   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+   GNU General Public License for more details.
+
+   You should have received a copy of the GNU General Public License
+   along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 package booru
 
 import (
@@ -12,20 +30,6 @@ import (
 	"path/filepath"
 	"strings"
 )
-
-/*
-Url for API access: /index.php?page=dapi&s=post&q=index
-
-limit How many posts you want to retrieve. There is a hard limit of 100 posts per request.
-pid The page number.
-tags The tags to search for. Any tag combination that works on the web site will work here. This includes all the meta-tags. See cheatsheet for more information.
-cid Change ID of the post. This is in Unix time so there are likely others with the same value if updated at the same time.
-id The post id.
-json Set to 1 for JSON formatted response.
-*/
-// https://gelbooru.com/index.php?page=help&topic=dapi
-
-// https://gelbooru.com/index.php?page=dapi&s=post&q=index&json=1
 
 type Attributes struct {
 	Limit  int `json:"limit"`
