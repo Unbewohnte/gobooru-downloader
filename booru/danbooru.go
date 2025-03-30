@@ -240,7 +240,7 @@ func (post *DanbooruPost) IsImage() bool {
 		"tiff": true,
 	}
 
-	return post.MediaAsset.Duration == 0.0 || imageExtensions[post.FileExt]
+	return imageExtensions[post.FileExt]
 }
 
 func (post *DanbooruPost) IsVideo() bool {
