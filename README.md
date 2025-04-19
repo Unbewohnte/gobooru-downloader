@@ -71,6 +71,7 @@ Use `-help` to output the latest information on flags and their purpose.
 | from-page | Set initial page number | 1 |
 | max-filesize-mb | Set max file size in megabytes to be allowed for download (0 for no cap) | 0 |
 | download-limit-gb | Set download limit in gigabytes. The program will quit after the limit was reached (0 for no cap) | 0.0 |
+| no-metadata | Do not save image metadata files. No metadata files will be saved on disk | false |
 
 ### Examples
 
@@ -86,8 +87,14 @@ Use `-help` to output the latest information on flags and their purpose.
 
 ## Build
 
-Run `go build` in the project directory
+For GUI run: `go build -o gobooru-downloader-gui ./cmd/gui`
+
+For CLI run: `go build -o gobooru-downloader ./cmd/cli`
+
+Alternatively, you can run `make` and it will compile both and put executable files in `bin` directory.
+
+For cross compilation there is `make cross` command which tries to compile the project for Linux and Windows systems on amd64 architecture. Although it will try to cross compile GUI as well, you'll have a better chance to compile it natively. CLI should cross compile without problems.
 
 ## License
 
-gobooru-downloader is licensed under GNU Public License v3. See `COPYING` for information
+gobooru-downloader is licensed under GNU Public License v3. See `COPYING` for information.
