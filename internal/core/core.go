@@ -36,7 +36,7 @@ import (
 	"golang.org/x/time/rate"
 )
 
-const VERSION string = "0.3"
+const VERSION string = "0.3.1"
 
 type Downloader struct {
 	client       *http.Client
@@ -176,13 +176,13 @@ func (d *Downloader) workerFunc(j Job) Result {
 		return NewResult(false, false, j.Post.Metadata())
 	}
 
-	// Update downloaded GB after the image had been downloaded
-	// d.downloadedGB += float64(j.Post.Size()) / 1024.0 / 1024.0
-
-	// Save metadata
-	if err := j.Post.SaveMetadata(d.config.OutputDir); err != nil {
-		logger.Error("[Worker] Failed to save metadata for %s: %s", mediaName, err)
-		return NewResult(false, false, j.Post.Metadata())
+	// Save metadata if needed
+	if !d.config.NoMetadata {
+		// Save metadata
+		if err := j.Post.SaveMetadata(d.config.OutputDir); err != nil {
+			logger.Error("[Worker] Failed to save metadata for %s: %s", mediaName, err)
+			return NewResult(false, false, j.Post.Metadata())
+		}
 	}
 
 	return NewResult(true, false, j.Post.Metadata())

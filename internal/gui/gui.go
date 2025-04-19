@@ -194,7 +194,7 @@ func (g *GUI) updateProgress(ctx context.Context) {
 
 func (g *GUI) showSettings() {
 	settingsWindow := g.app.NewWindow("Settings")
-	settingsWindow.Resize(fyne.NewSize(400, 300))
+	settingsWindow.Resize(fyne.NewSize(500, 340))
 
 	// Create form elements for config
 	booruURLEntry := widget.NewEntry()
@@ -224,26 +224,8 @@ func (g *GUI) showSettings() {
 	maxRetriesEntry := widget.NewEntry()
 	maxRetriesEntry.SetText(strconv.Itoa(int(g.config.MaxRetries)))
 
-	// imagesOnlyCheck := widget.NewCheck("Images only", func(b bool) {
-	// 	if g.config.ImagesOnly {
-	// 		g.config.ImagesOnly = false
-	// 	} else {
-	// 		g.config.ImagesOnly = true
-	// 		g.config.VideosOnly = false
-	// 	}
-	// })
-	// imagesOnlyCheck.SetText("Images only")
-
-	// videosOnlyCheck := widget.NewCheck("Videos only", func(b bool) {
-	// 	if g.config.VideosOnly {
-	// 		g.config.VideosOnly = false
-	// 	} else {
-	// 		g.config.VideosOnly = true
-	// 		g.config.ImagesOnly = false
-	// 		imagesOnlyCheck.Checked = false
-	// 	}
-	// })
-	// videosOnlyCheck.SetText("Videos only")
+	noMetadataCheck := widget.NewCheck("No metadata", func(b bool) { g.config.NoMetadata = b })
+	noMetadataCheck.Checked = g.config.NoMetadata
 
 	form := &widget.Form{
 		Items: []*widget.FormItem{
@@ -256,8 +238,7 @@ func (g *GUI) showSettings() {
 			{Text: "From page", Widget: fromPageEntry},
 			{Text: "Max file size (MB)", Widget: maxFileSizeEntry},
 			{Text: "Download limit (GB)", Widget: downloadLimitGBEntry},
-			// {Text: "Images only", Widget: imagesOnlyCheck},
-			// {Text: "Videos only", Widget: videosOnlyCheck},
+			{Text: "No metadata", Widget: noMetadataCheck},
 		},
 		OnSubmit: func() {
 			// Update config
@@ -291,6 +272,8 @@ func (g *GUI) showSettings() {
 			if err == nil {
 				g.config.DownloadLimitGb = downloadLimitGB
 			}
+
+			g.config.NoMetadata = noMetadataCheck.Checked
 
 			settingsWindow.Close()
 		},

@@ -46,6 +46,7 @@ type Config struct {
 	MaxFileSize     uint
 	DownloadLimitGb float64
 	HTTPClient      *http.Client
+	NoMetadata      bool
 }
 
 func ParseFlags() *Config {
@@ -63,6 +64,7 @@ func ParseFlags() *Config {
 		fromPage        = flag.Uint("from-page", 1, "Set initial page number")
 		maxFileSize     = flag.Uint("max-filesize-mb", 0, "Set max file size in megabytes (0 for no cap)")
 		downloadLimitGb = flag.Float64("download-limit-gb", 0.0, "Set download limit in gigabytes (0 for no cap)")
+		noMetadata      = flag.Bool("no-metadata", false, "Do not save image metadata files")
 	)
 
 	flag.Parse()
@@ -94,6 +96,7 @@ func ParseFlags() *Config {
 		MaxFileSize:     *maxFileSize,
 		DownloadLimitGb: *downloadLimitGb,
 		HTTPClient:      nil,
+		NoMetadata:      *noMetadata,
 	}
 
 	cfg.Apply()
