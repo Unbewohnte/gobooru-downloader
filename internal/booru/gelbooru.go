@@ -19,7 +19,7 @@
 package booru
 
 import (
-	"Unbewohnte/gobooru-downloader/proxy"
+	"Unbewohnte/gobooru-downloader/internal/proxy"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"

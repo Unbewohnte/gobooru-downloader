@@ -1,3 +1,5 @@
 output/
 gobooru-downloader
+gobooru-downloader-gui
 template
+bin/
